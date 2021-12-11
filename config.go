@@ -26,7 +26,9 @@ func (conf *GatewayConfig) Read(r io.Reader) error {
 		return err
 	}
 	conf.Redis.clean()
-	conf.Redis.validate()
+	if err := conf.Redis.validate(); err != nil {
+		return err
+	}
 	svcMap := make(map[string]bool)
 	for i, svc := range conf.Services {
 		svc.clean()
