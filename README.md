@@ -13,7 +13,7 @@ This doesn't mean it's not feature packed - in fact, it provides:
 - service mapping in YAML
 - route grouping/matching (with simple glob patterns)
 - route group authorization (Basic Auth or JWT Bearer token)
-- caching and rate limiting (requires Redis)
+- caching and rate limiting (WIP) (requires Redis)
     - both support key extraction from request parameters
 - Prometheus metrics (and provides a simple Grafana dashboard you can import and customize)
 
@@ -25,6 +25,40 @@ It's very simple to deploy, and provides standard YAML manifests for:
 Importantly, it supports auto-reload for the Kubernetes ConfigMap. Note this can take a few seconds up to a few minutes depending on the kubelet's sync interval.
 
 It's also stateless - which means you can simply horizontally scale it, run in on preemptible/spot nodes, whatever (you should bring your own scaling for Redis, though).
+
+## Configuration
+
+Here's an example configuration file:
+
+```yml
+redis:
+  readaddresses:
+    - localhost:6379
+  writeaddresses:
+    - localhost:6379
+
+services:
+  - name: example
+    addresses:
+      - localhost:8080
+    routes:
+      - routes:
+          - name: private
+            method: POST
+            path: /private
+            ratelimit:
+              perminute: 30
+            auth:
+              bearer:
+                publickey: '{"use":"sign","kty":"oct","kid":"005456ff-1262-4bf0-a608-8534e1fe2763","alg":"HS256","k":"L0FCL4hivd7ShePdJnzEEoqlwoOfCrkcqdbXdADNk0s523xV7C5Sr6GiRIMpvNIelEsR6ta7MZnELY4JoHrm_w"}'
+          - name: home
+            method: GET
+            path: /*
+            cache:
+              ttl: 5m
+```
+
+Routes are matched in the order they are defined.
 
 ## `valyala/fasthttp` support
 
