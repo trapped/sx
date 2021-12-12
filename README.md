@@ -26,6 +26,14 @@ Importantly, it supports auto-reload for the Kubernetes ConfigMap. Note this can
 
 It's also stateless - which means you can simply horizontally scale it, run in on preemptible/spot nodes, whatever (you should bring your own scaling for Redis, though).
 
+## Running
+
+From the command line: `sx -l :7654 -pprof :6060 -f config.yml`
+
+In docker-compose using the provided manifest: `docker-compose -f sx/docker-compose.yml up`
+
+In Kubernetes: import the `kubernetes/sx.yml` manifest using kustomize or your preferred tool, then customize its configuration, resources...
+
 ## Configuration
 
 Here's an example configuration file:
@@ -58,11 +66,38 @@ services:
               ttl: 5m
 ```
 
+> The above example uses a symmetric key (oct) for simplicity - you should use something asymmetric like RSA or EC.
+
 Routes are matched in the order they are defined.
+
+SX prefixes service paths with `/{service name}`, so in the above example it would expose:
+
+- `/example/private` -> `localhost:8080/private`
+- `/example/*` -> `localhost:8080/*`
+
+## Prometheus metrics and profiling
+
+SX exposes Prometheus metrics on the address specified with `-pprof` (`0.0.0.0:6060` by default) at `/metrics`.
+
+You can also attach using `go tool pprof`.
+
+It's recommended not exposing this port to the external world.
+
+Prometheus metrics follow this format:
+
+- system (Go) metrics: `go_*`
+- route metrics: `sx_route_*` with labels `service`, `route`, `path`
+- cache metrics: `sx_cache_*` with labels `service`, `route`, `path`
+
+Timings are always provided as nanoseconds.
+
+You can also find an example Grafana dashboard in `grafana/`.
+
+A health check endpoint is also available at `/healthz`.
 
 ## `valyala/fasthttp` support
 
-SX partially supports `valyala/fasthttp`. Many things don't work, though, for example:
+SX partially supports `valyala/fasthttp` which can be enabled with the `-fast` flag. Many things don't work, though, for example:
 
 - request/response streaming: fasthttp currently buffers everything
 - cache/rate limiting
