@@ -2,21 +2,69 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/trapped/sx"
 	"github.com/trapped/sx/pkg/redis"
 )
+
+var (
+	// cache
+	metricCacheGetResponse = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "sx",
+		Subsystem: "cache",
+		Name:      "get_response",
+		Help:      "Histogram of GetResponse duration buckets and total calls count",
+	}, []string{"service", "route", "path"})
+	metricCacheGetResponseHit = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "sx",
+		Subsystem: "cache",
+		Name:      "get_response_hit",
+		Help:      "Histogram of GetResponse cache hit count",
+	}, []string{"service", "route", "path"})
+	metricCacheSetResponse = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "sx",
+		Subsystem: "cache",
+		Name:      "set_response",
+		Help:      "Histogram of SetResponse duration buckets and total calls count",
+	}, []string{"service", "route", "path"})
+	// request
+	metricRouteRequest = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "sx",
+		Subsystem: "route",
+		Name:      "request",
+		Help:      "Histogram of request duration buckets and total calls count",
+	}, []string{"service", "route", "path", "status"})
+)
+
+// sxCtx is the context value added to request contexts.
+type sxCtx struct {
+	route       *sx.Route
+	originalURL *url.URL
+	cacheKey    string
+	startTime   time.Time
+}
+
+// sxCtxKey is the key used for setting and retrieving sxCtx from request contexts.
+var sxCtxKey sxCtx
 
 type Gateway struct {
 	routes          []sx.Route
 	serviceBackends map[string]*backendgroup
 	redis           *redis.Client
+	s               *http.Server
 }
 
 func (g *Gateway) match(path string) *sx.Route {
@@ -89,11 +137,10 @@ func (x *httpCacheKeyExtractor) ExtractQuery(name string) string {
 }
 
 func (g *Gateway) postResponse(req *http.Request, res *http.Response) error {
-	path := req.Header.Get("X-SX-Path")
-	rt := g.match(path)
+	// get context
+	ctx := req.Context().Value(sxCtxKey).(*sxCtx)
 	// update cache
-	if rt != nil && rt.RouteGroup.Cache != nil {
-		cacheKey := req.Header.Get("X-SX-Key")
+	if ctx.route.RouteGroup.Cache != nil {
 		// backup body
 		b := res.Body
 		body, err := ioutil.ReadAll(b)
@@ -103,13 +150,79 @@ func (g *Gateway) postResponse(req *http.Request, res *http.Response) error {
 		defer b.Close()
 		res.Body = io.NopCloser(bytes.NewReader(body))
 		// set response in cache
-		g.redis.SetResponse(cacheKey, redis.Response{
+		setResponseStart := time.Now()
+		g.redis.SetResponse(ctx.cacheKey, redis.Response{
 			Status:  res.StatusCode,
 			Headers: res.Header,
 			Body:    body,
-		}, rt.RouteGroup.Cache.TTL)
+		}, ctx.route.RouteGroup.Cache.TTL)
+		metricCacheSetResponse.WithLabelValues(
+			ctx.route.RouteGroup.ParentService.Name,
+			ctx.route.RouteGroup.Name,
+			ctx.route.RouteGroup.AbsolutePath(),
+		).Observe(float64(time.Since(setResponseStart).Nanoseconds()))
 	}
+	// track metrics
+	metricRouteRequest.WithLabelValues(
+		ctx.route.RouteGroup.ParentService.Name,
+		ctx.route.RouteGroup.Name,
+		ctx.route.RouteGroup.AbsolutePath(),
+		strconv.Itoa(res.StatusCode),
+	).Observe(float64(time.Since(ctx.startTime).Nanoseconds()))
 	return nil
+}
+
+func (g *Gateway) rewriteRequest(rt *sx.Route, b *backend, r *http.Request) *http.Request {
+	// store values in context
+	originalURL := *r.URL
+	ctxVal := sxCtx{
+		route:       rt,
+		originalURL: &originalURL,
+		startTime:   time.Now(),
+	}
+	// we don't know if upstream supports TLS
+	r.URL.Scheme = "http"
+	// http://sx-gateway/upstream/... -> http://upstream-url/upstream/...
+	r.URL.Host = b.url.Host
+	r.Host = b.url.Host
+	// http://upstream-url/upstream/... -> http://upstream-url/...
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, rt.RouteGroup.ParentService.PathPrefix)
+	// return curried request
+	return r.WithContext(context.WithValue(r.Context(), sxCtxKey, &ctxVal))
+}
+
+func (g *Gateway) tryServeCache(rt *sx.Route, w http.ResponseWriter, r *http.Request) bool {
+	// get context
+	ctx := r.Context().Value(sxCtxKey).(*sxCtx)
+	// prepare cache key
+	ctx.cacheKey = g.redis.MakeKey(
+		"resp",
+		ctx.originalURL.Path,
+		sx.CacheKeySet(rt.RouteGroup.Cache.Keys).Extract(&httpCacheKeyExtractor{r}))
+	// record timing of cache fetch
+	getResponseStart := time.Now()
+	res, ok := g.redis.GetResponse(ctx.cacheKey)
+	metricCacheGetResponse.WithLabelValues(
+		rt.RouteGroup.ParentService.Name,
+		rt.RouteGroup.Name,
+		rt.RouteGroup.AbsolutePath(),
+	).Observe(float64(time.Since(getResponseStart).Nanoseconds()))
+	// cache hit, handle request from cache
+	if ok {
+		metricCacheGetResponseHit.WithLabelValues(
+			rt.RouteGroup.ParentService.Name,
+			rt.RouteGroup.Name,
+			rt.RouteGroup.AbsolutePath(),
+		).Inc()
+		for k, v := range res.Headers {
+			for i := 0; i < len(v); i++ {
+				w.Header().Set(k, v[i])
+			}
+		}
+		w.WriteHeader(res.Status)
+		w.Write(res.Body)
+	}
+	return ok
 }
 
 // ServeHTTP implements the standard Go HTTP interface.
@@ -133,30 +246,21 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, sx.ErrorBadGateway)
 		return
 	}
-	// patch request
-	r.URL.Scheme = "http"
-	originalPath := r.URL.Path
-	r.Header.Set("X-SX-Path", originalPath)
-	r.URL.Host = b.url.Host
-	r.URL.Path = strings.TrimPrefix(r.URL.Path, rt.RouteGroup.ParentService.PathPrefix)
+	// TODO: set SX values in context rather than headers
+	// rewrite request
+	r = g.rewriteRequest(rt, b, r)
+	ctx := r.Context().Value(sxCtxKey).(*sxCtx)
+
 	// TODO: check rate limit
-	// fetch from cache
+	// try serving from cache
 	if rt.RouteGroup.Cache != nil {
-		cacheKeys := sx.CacheKeySet(rt.RouteGroup.Cache.Keys).Extract(&httpCacheKeyExtractor{r})
-		cacheKey := g.redis.MakeKey("resp", originalPath, cacheKeys)
-		r.Header.Set("X-SX-Key", cacheKey)
-		res, ok := g.redis.GetResponse(cacheKey)
-		if ok {
-			for k, v := range res.Headers {
-				for i := 0; i < len(v); i++ {
-					w.Header().Set(k, v[i])
-				}
-			}
-			w.WriteHeader(res.Status)
-			w.Write(res.Body)
+		if g.tryServeCache(rt, w, r) {
+			log.Printf("%s %s (cached)", r.Method, ctx.originalURL)
 			return
 		}
 	}
+	// forward request to upstream
+	log.Printf("%s %s -> %s", r.Method, ctx.originalURL, r.URL)
 	b.proxy.ServeHTTP(w, r)
 }
 
@@ -166,5 +270,14 @@ func (g *Gateway) ListenAndServe(addr string) error {
 		Addr:    addr,
 		Handler: g,
 	}
+	g.s = s
 	return s.ListenAndServe()
+}
+
+// Shutdown gracefully stops the gateway.
+func (g *Gateway) Shutdown(ctx context.Context) error {
+	if g.s != nil {
+		return g.s.Shutdown(ctx)
+	}
+	return nil
 }

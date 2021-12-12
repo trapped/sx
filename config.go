@@ -44,6 +44,9 @@ func (conf *GatewayConfig) Read(r io.Reader) error {
 			if err := r.Walk(func(parent, g *RouteGroup) error {
 				g.Parent = parent
 				g.ParentService = svc
+				if g.Name == "" && parent != nil {
+					g.Name = parent.Name
+				}
 				if g.Auth == nil && parent != nil {
 					g.Auth = parent.Auth
 				}
@@ -417,12 +420,6 @@ func (r *Redis) configured() bool {
 }
 
 func (r *Redis) validate() error {
-	if len(r.ReadAddresses) < 1 {
-		return errors.Errorf("need at least a redis read address")
-	}
-	if len(r.WriteAddresses) < 1 {
-		return errors.Errorf("need at least a redis write address")
-	}
 	// TODO: validate they are absolute hosts
 	return nil
 }

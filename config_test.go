@@ -7,7 +7,7 @@ import (
 
 func TestReadGatewayConfig(t *testing.T) {
 	conf := new(GatewayConfig)
-	f, err := os.Open("example.yml")
+	f, err := os.Open("config.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,10 +33,6 @@ func TestRedisCleanValidate(t *testing.T) {
 	}
 	if r.configured() {
 		t.Fatalf("redis should NOT appear configured")
-		return
-	}
-	if err := r.validate(); err == nil || err.Error() != "need at least a redis write address" {
-		t.Fatalf("bad validation error: %v", err)
 		return
 	}
 }

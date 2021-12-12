@@ -1,0 +1,32 @@
+redis:
+  readaddresses:
+    - redis:6379
+  writeaddresses:
+    - redis:6379
+
+services:
+  - name: cat-facts
+    addresses:
+      - https://cat-fact.herokuapp.com
+    routes:
+      - name: facts
+        method: GET
+        path: /facts
+        cache:
+          ttl: 30s
+  - name: anime-facts
+    addresses:
+      - https://animechan.vercel.app/api
+    routes:
+      - name: random
+        method: GET
+        path: /random
+        cache:
+          ttl: 30s
+  - name: nc
+    addresses:
+      - http://localhost:6666/prefix
+    routes:
+      - name: path
+        method: GET
+        path: /test

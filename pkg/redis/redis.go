@@ -1,7 +1,9 @@
+// package redis provides a Redis cache backend implementation.
 package redis
 
 import (
 	"context"
+	"log"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -11,12 +13,15 @@ import (
 	"github.com/trapped/sx"
 )
 
+// Response represents an HTTP response.
 type Response struct {
 	Status  int                 `msgpack:"s"`
 	Headers map[string][]string `msgpack:"h"`
 	Body    []byte              `msgpack:"b"`
 }
 
+// Client encapsulates sets of Redis clients for reading and writing,
+// as well as round-robin sequences.
 type Client struct {
 	readClients  []*redis.Client
 	writeClients []*redis.Client
@@ -35,30 +40,38 @@ func (c *Client) nextWrite() *redis.Client {
 	return next
 }
 
+// MakeKey joins the provided mode, url and keys into a single cache key string.
 func (c *Client) MakeKey(mode, url string, keys []string) string {
-	return strings.Join(append([]string{mode, url}, keys...), ":")
+	return strings.Join(append([]string{"sx", mode, url}, keys...), ":")
 }
 
+// GetResponse fetches a previously cached HTTP response from Redis.
 func (c *Client) GetResponse(k string) (resp Response, ok bool) {
 	res, err := c.nextRead().Get(context.TODO(), k).Bytes()
 	if err != nil {
 		return
 	}
 	if err := msgpack.Unmarshal(res, &resp); err != nil {
+		log.Printf("msgpack unmarshal error: %v", err)
 		return
 	}
 	ok = true
 	return
 }
 
+// SetResponse stores an HTTP response into Redis with the provided TTL.
 func (c *Client) SetResponse(k string, resp Response, ttl time.Duration) {
 	z, err := msgpack.Marshal(resp)
 	if err != nil {
+		log.Printf("msgpack marshal error: %v", err)
 		return
 	}
-	c.nextWrite().SetNX(context.TODO(), k, z, ttl)
+	if err := c.nextWrite().SetNX(context.TODO(), k, z, ttl).Err(); err != nil {
+		log.Printf("cache write error: %v", err)
+	}
 }
 
+// NewClient initializes a new set of Redis clients according to the specified configuration.
 func NewClient(conf sx.Redis) *Client {
 	c := &Client{
 		readClients:  []*redis.Client{},

@@ -9,7 +9,7 @@ import (
 
 func TestGatewayLoadConfig(t *testing.T) {
 	conf := new(sx.GatewayConfig)
-	f, err := os.Open("../../example.yml")
+	f, err := os.Open("../../config.yml")
 	if err != nil {
 		t.Fatal(err)
 	}

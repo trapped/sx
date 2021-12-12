@@ -8,6 +8,8 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/trapped/sx"
 	"github.com/trapped/sx/pkg/fasthttp"
 	h "github.com/trapped/sx/pkg/http"
@@ -33,8 +35,12 @@ func main() {
 		panic(err)
 	}
 
-	log.Printf("pprof listening at %s", *pprofListenAddr)
+	log.Printf("pprof and metrics listening at %s", *pprofListenAddr)
 	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("OK\n"))
+		})
 		log.Fatal(http.ListenAndServe(*pprofListenAddr, nil))
 	}()
 
