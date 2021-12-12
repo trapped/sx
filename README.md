@@ -9,9 +9,9 @@ It's intended to be the least-intrusive and simple as possible. It does not supp
 
 This doesn't mean it's not feature packed - in fact, it provides:
 
-- load balancing with multiple addresses (if running in Kubernetes you should just use the Service address)
+- round-robin load balancing with multiple addresses (if running in Kubernetes you should just use the Service address)
 - service mapping in YAML
-- route grouping/matching (with simple glob patterns)
+- route path grouping/matching (with simple glob patterns)
 - route group authorization (Basic Auth or JWT Bearer token)
 - caching and rate limiting (WIP) (requires Redis)
     - both support key extraction from request parameters

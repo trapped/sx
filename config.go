@@ -23,11 +23,11 @@ func (conf *GatewayConfig) Read(r io.Reader) error {
 	d := yaml.NewDecoder(r)
 	d.SetStrict(true)
 	if err := d.Decode(conf); err != nil {
-		return err
+		return errors.Wrap(err, "error decoding yaml")
 	}
 	conf.Redis.clean()
 	if err := conf.Redis.validate(); err != nil {
-		return err
+		return errors.Wrap(err, "error validating redis")
 	}
 	svcMap := make(map[string]bool)
 	for i, svc := range conf.Services {

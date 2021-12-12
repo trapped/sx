@@ -4,11 +4,11 @@ go 1.17
 
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/fsnotify/fsnotify v1.4.9
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/gobwas/glob v0.2.3
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
-	github.com/shamaton/msgpack/v2 v2.1.0
 	github.com/valyala/fasthttp v1.31.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.4.0
