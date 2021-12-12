@@ -75,6 +75,14 @@ SX prefixes service paths with `/{service name}`, so in the above example it wou
 - `/example/private` -> `localhost:8080/private`
 - `/example/*` -> `localhost:8080/*`
 
+## Caching
+
+You can enable caching for groups or single routes by specifying at least a Time-To-Live.
+
+The request URL is always used as cache key; you can optionally add more keys (to partition your cache).
+
+Responses are only cached if their status code indicates an OK result (1xx, 2xx, 3xx).
+
 ## Prometheus metrics and profiling
 
 SX exposes Prometheus metrics on the address specified with `-pprof` (`0.0.0.0:6060` by default) at `/metrics`.
@@ -86,10 +94,10 @@ It's recommended not exposing this port to the external world.
 Prometheus metrics follow this format:
 
 - system (Go) metrics: `go_*`
-- route metrics: `sx_route_*` with labels `service`, `route`, `path`
-- cache metrics: `sx_cache_*` with labels `service`, `route`, `path`
+- route metrics: `sx_route_*` with labels `service`, `route`, `method`, `path`, `status`
+- cache metrics: `sx_cache_*` with labels `service`, `route`, `method`, `path`
 
-Timings are always provided as nanoseconds.
+Timings are always provided as seconds.
 
 You can also find an example Grafana dashboard in `grafana/`.
 

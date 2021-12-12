@@ -41,7 +41,11 @@ func TestGatewayMock(t *testing.T) {
 	defer mock.Close()
 
 	g := new(Gateway)
-	go g.ListenAndServe(":7654")
+	go func() {
+		if err := g.ListenAndServe(":7654"); err != nil {
+			t.Errorf("failed to run gateway: %v", err)
+		}
+	}()
 	defer g.Shutdown(context.Background())
 
 	conf := new(sx.GatewayConfig)

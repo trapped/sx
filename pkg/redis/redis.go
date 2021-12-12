@@ -2,23 +2,20 @@
 package redis
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"io"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	redis "github.com/go-redis/redis/v8"
-	"github.com/shamaton/msgpack/v2"
 	"github.com/trapped/sx"
 )
-
-// Response represents an HTTP response.
-type Response struct {
-	Status  int                 `msgpack:"s"`
-	Headers map[string][]string `msgpack:"h"`
-	Body    []byte              `msgpack:"b"`
-}
 
 // Client encapsulates sets of Redis clients for reading and writing,
 // as well as round-robin sequences.
@@ -46,29 +43,41 @@ func (c *Client) MakeKey(mode, url string, keys []string) string {
 }
 
 // GetResponse fetches a previously cached HTTP response from Redis.
-func (c *Client) GetResponse(k string) (resp Response, ok bool) {
-	res, err := c.nextRead().Get(context.TODO(), k).Bytes()
+func (c *Client) GetResponse(ctx context.Context, k string) (resp *http.Response, ok bool) {
+	res, err := c.nextRead().Get(ctx, k).Bytes()
 	if err != nil {
 		return
 	}
-	if err := msgpack.Unmarshal(res, &resp); err != nil {
-		log.Printf("msgpack unmarshal error: %v", err)
-		return
-	}
-	ok = true
-	return
+	buf := bufio.NewReader(bytes.NewBuffer(res))
+	resp, err = http.ReadResponse(buf, nil)
+	return resp, err == nil
 }
 
 // SetResponse stores an HTTP response into Redis with the provided TTL.
-func (c *Client) SetResponse(k string, resp Response, ttl time.Duration) {
-	z, err := msgpack.Marshal(resp)
+func (c *Client) SetResponse(ctx context.Context, k string, resp *http.Response, ttl time.Duration) {
+	// backup body
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("msgpack marshal error: %v", err)
+		log.Printf("error reading response body: %v", err)
 		return
 	}
-	if err := c.nextWrite().SetNX(context.TODO(), k, z, ttl).Err(); err != nil {
+	if resp.ContentLength <= 0 {
+		resp.ContentLength = int64(len(body))
+	}
+	r := bytes.NewReader(body)
+	// restore body
+	resp.Body = io.NopCloser(r)
+	// serialize response
+	buf := bytes.NewBuffer(nil)
+	err = resp.Write(buf)
+	if err != nil {
+		log.Printf("error writing response to cache buffer: %v", err)
+		return
+	}
+	if err := c.nextWrite().SetNX(ctx, k, buf.Bytes(), ttl).Err(); err != nil {
 		log.Printf("cache write error: %v", err)
 	}
+	r.Seek(0, io.SeekStart)
 }
 
 // NewClient initializes a new set of Redis clients according to the specified configuration.
