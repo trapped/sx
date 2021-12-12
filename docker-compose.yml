@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    command: --config.file=/etc/prometheus/config.yml
+    volumes:
+      - ./prometheus/:/etc/prometheus/:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    command: --config=/etc/grafana/config.ini
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/:/etc/grafana/:ro
+    depends_on:
+      - prometheus
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+
+  gateway:
+    build: ./
+
+    depends_on:
+      - redis
+
+    expose:
+      - "7654"
+      - "6060"
+    ports:
+      - "7654:7654"
+      - "6060:6060"
+
+    command: sx -f /config.yml -l :7654 -pprof gateway:6060
+
+    volumes:
+      - ${PWD}/config.yml:/config.yml:ro

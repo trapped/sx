@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: sx
+    scrape_interval: 1s # artificially very low for fast feedback during development
+    static_configs:
+      - targets:
+          - gateway:6060
