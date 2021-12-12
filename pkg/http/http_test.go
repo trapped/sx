@@ -42,7 +42,7 @@ func TestGatewayMock(t *testing.T) {
 
 	g := new(Gateway)
 	go func() {
-		if err := g.ListenAndServe(":7654"); err != nil {
+		if err := g.ListenAndServe(":7655"); err != nil && err != http.ErrServerClosed {
 			t.Errorf("failed to run gateway: %v", err)
 		}
 	}()
@@ -68,7 +68,7 @@ services:
 		return
 	}
 
-	resp, err := http.Get("http://localhost:7654/mock/")
+	resp, err := http.Get("http://localhost:7655/mock/")
 	if err != nil {
 		t.Errorf("failed fetching root: %v", err)
 	}
@@ -106,7 +106,7 @@ services:
 		return
 	}
 
-	resp, err = http.Get("http://localhost:7654/mock/")
+	resp, err = http.Get("http://localhost:7655/mock/")
 	if err != nil {
 		t.Errorf("failed fetching root: %v", err)
 	}
