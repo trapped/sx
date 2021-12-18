@@ -1,0 +1,8 @@
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+# we patch the kubelect sync-frequency to get a faster feedback loop when testing
+# kubernetes ConfigMap reloads in kind
+kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    syncFrequency: 10s

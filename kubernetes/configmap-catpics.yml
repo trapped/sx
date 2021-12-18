@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sx
+  namespace: sx
+data:
+  config.yml: |
+    services:
+      - name: cat-pics
+        addresses:
+          - https://thatcopy.pw/catapi/rest
+        routes:
+          - name: random
+            method: GET
+            path: /

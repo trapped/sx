@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sx
+  namespace: sx
+data:
+  config.yml: |
+    services:
+      - name: cat-facts
+        addresses:
+          - https://cat-fact.herokuapp.com
+        routes:
+          - name: facts
+            method: GET
+            path: /facts
+      - name: anime-facts
+        addresses:
+          - https://animechan.vercel.app/api
+        routes:
+          - name: random
+            method: GET
+            path: /random

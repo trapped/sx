@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sx
+  namespace: sx
+spec:
+  selector:
+    matchLabels:
+      service: sx
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        service: sx
+    spec:
+      volumes:
+        - name: config
+          configMap:
+            name: sx
+      containers:
+        - name: gateway
+          image: ghcr.io/trapped/sx:latest
+          imagePullPolicy: Never
+          command: ["sx", "-f", "/config/config.yml"]
+          ports:
+            - containerPort: 7654
+              name: http
+            - containerPort: 6060
+              name: metrics
+          readinessProbe:
+            httpGet:
+              port: 6060
+              path: /healthz
+          livenessProbe:
+            httpGet:
+              port: 6060
+              path: /healthz
+          volumeMounts:
+            - mountPath: /config
+              name: config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 100m
+              memory: 100Mi
