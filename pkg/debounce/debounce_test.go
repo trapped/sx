@@ -15,4 +15,7 @@ func TestDeboucer(t *testing.T) {
 	d.Func(func() { n++ })
 	t.Logf("waiting")
 	d.Wait()
+	if n != 1 {
+		t.Errorf("n value was unexpected: %v", n)
+	}
 }
