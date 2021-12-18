@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	_ "net/http/pprof"
@@ -46,38 +47,52 @@ func watchConfig(path string, handler func(*sx.GatewayConfig) error) {
 	}
 	defer watcher.Close()
 
-	debounce := debounce.New(1 * time.Second)
+	debounce := debounce.New(5 * time.Second)
+
+	/*
+		the following symlink-following logic was inspired by:
+		https://github.com/spf13/viper/commit/e0f7631cf3ac7e7530949c7e154855076b0a4c17
+	*/
+
+	path, _ = filepath.Abs(path)
+	realPath, _ := filepath.EvalSymlinks(path)
+	dir, _ := filepath.Split(path)
 
 	done := make(chan bool)
 	go func() {
 		for {
 			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
+			case event := <-watcher.Events:
+				currentPath, _ := filepath.EvalSymlinks(path)
 				if event.Op&fsnotify.Remove == fsnotify.Remove {
 					// ignore file delete events since they would bork the server
 					continue
 				}
-				debounce.Func(func() {
-					log.Println("reloading configuration")
-					conf, err := readConf(path)
-					if err != nil {
-						log.Printf("error reloading configuration, ignoring: %v", err)
-					}
-					if err := handler(conf); err != nil {
-						log.Printf("error reapplying configuration, ignoring: %v", err)
-					}
-				})
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
+				// either file was modified or a symlink was changed
+				if filepath.Clean(event.Name) == path || currentPath != realPath {
+					realPath = currentPath
+					debounce.Func(func() {
+						log.Println("reloading configuration")
+						conf, err := readConf(realPath)
+						if err != nil {
+							log.Printf("error reloading configuration, ignoring: %v", err)
+						}
+						if err := handler(conf); err != nil {
+							log.Printf("error reapplying configuration, ignoring: %v", err)
+						}
+					})
 				}
+			case err := <-watcher.Errors:
 				log.Fatalf("configuration watcher error: %v", err)
 			}
 		}
 	}()
+
+	log.Printf("watching configuration %v in %s", path, dir)
+	err = watcher.Add(dir)
+	if err != nil {
+		log.Fatalf("error watching configuration: %v", err)
+	}
 	err = watcher.Add(path)
 	if err != nil {
 		log.Fatalf("error watching configuration: %v", err)
