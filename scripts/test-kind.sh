@@ -32,6 +32,8 @@ kubectl rollout status --namespace=sx deploy/sx --timeout=300s
 # check SX is up
 if ! kubectl logs --namespace=sx deploy/sx | grep "listen"; then
     echo "ERROR: SX does not appear up yet"
+    kubectl describe --namespace=sx deploy
+    kubectl describe --namespace=sx pod
     exit 1
 fi
 
@@ -41,5 +43,7 @@ kubectl apply -f kubernetes/configmap-catpics.yml
 # check SX reloaded its config
 if ! timeout 300s grep -m1 reload <(kubectl logs -f --namespace=sx deploy/sx | tee /dev/stderr); then
     echo "ERROR: SX has not reloaded its config yet"
+    kubectl describe --namespace=sx deploy
+    kubectl describe --namespace=sx pod
     exit 1
 fi
