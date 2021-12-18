@@ -22,7 +22,7 @@ It's very simple to deploy, and provides standard YAML manifests for:
 - docker-compose (includes Redis; also includes pre-configured Prometheus and Grafana)
 - Kubernetes (Redis not included)
 
-Importantly, it supports auto-reload for the Kubernetes ConfigMap. Note this can take a few seconds up to a few minutes depending on the kubelet's sync interval.
+Importantly, it supports [auto-reload for the Kubernetes ConfigMap](#kubernetes-configmap-autoreload). Note this can take a few seconds up to a few minutes depending on the kubelet's sync interval.
 
 It's also stateless - which means you can simply horizontally scale it, run in on preemptible/spot nodes, whatever (you should bring your own scaling for Redis, though).
 
@@ -32,7 +32,9 @@ From the command line: `sx -l :7654 -pprof :6060 -f config.yml`
 
 In docker-compose using the provided manifest: `docker-compose -f sx/docker-compose.yml up`
 
-In Kubernetes: import the `kubernetes/sx.yml` manifest using kustomize or your preferred tool, then customize its configuration, resources...
+In Kubernetes: import the `kubernetes/*.yml` example manifests using kustomize or your preferred tool, then customize its configuration, resources...
+
+You can also manually deploy the official Docker image `ghcr.io/trapped/sx`; [have a look on GitHub packages](https://github.com/users/trapped/packages/container/package/sx) for the available tags.
 
 ## Configuration
 
@@ -110,3 +112,13 @@ SX partially supports `valyala/fasthttp` which can be enabled with the `-fast` f
 - request/response streaming: fasthttp currently buffers everything
 - cache/rate limiting
 - metrics
+
+## Kubernetes ConfigMap autoreload
+
+Kubernetes allows developers to update ConfigMaps in place; it builds a symlink
+chain in the Pod volume mount: `/config/config.yml -> [...] -> /config/..2021_12_18_11_04_31.11673452/config.yml`.
+
+**Note that this only happens when you mount a ConfigMap as a directory!**
+
+To detect this, SX watches FS events for the whole `/config/` directory, and
+checks for changes in the `/config/config.yml` symlink real path or target file.
