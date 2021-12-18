@@ -10,6 +10,8 @@ RUN CGO_ENABLED=0 go build -o build/sx ./cmd/sx
 
 FROM scratch
 
+LABEL org.opencontainers.image.source https://github.com/trapped/sx
+
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 COPY --from=builder /go/src/github.com/trapped/sx/build/sx /bin/sx
