@@ -9,7 +9,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
-	github.com/valyala/fasthttp v1.31.0
+	github.com/valyala/fasthttp v1.32.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.4.0
 )
